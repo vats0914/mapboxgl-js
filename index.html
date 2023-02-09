@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Creating a globe</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.12.0/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.12.0/mapbox-gl.js"></script>
+<script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
+
+<style>
+    html,body { margin: 0; padding: 0;height:100%; }
+    #map {  height:100%;flex-grow: 1; width: 100%; }
+    #container{
+        display: flex;
+        height: 100%;
+        padding: 10px;
+    }
+    #sidebar{
+        width: 200px;
+        height: 100%;
+        flex-shrink: 0;
+    }
+    #button{
+        margin: 5px;
+    }
+</style>
+</head>
+<body>
+
+    <script src="https://unpkg.com/three@0.126.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.126.0/examples/js/loaders/GLTFLoader.js"></script>
+
+<div id="container">
+    <div id="sidebar">
+        <button id="flyToConey">Fly to Coney Island</button>
+        <button id="reset">Reset</button>
+        <button id="replay">Replay</button>
+    </div>
+    <div id="map"></div>
+</div>
+
+<script>
+    const INITIAL_CENTER = [86.9250,27.9881]
+	mapboxgl.accessToken = 'pk.eyJ1IjoidnRzbCIsImEiOiJjbGRsaGZoaG0wMXJ4M29udzdrMGZnZWlxIn0.UvCR8AGz6Go4hXJty00x-A';
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/satellite-streets-v11',
+        projection: 'globe', // Display the map as a globe, since satellite-v9 defaults to Mercator
+        zoom: 10,
+        center: [INITIAL_CENTER[0],INITIAL_CENTER[1]],
+        antialias:true
+    });
+
+    map.on('style.load', () => {
+        // map.setFog({}); // Set the default atmosphere style
+
+
+        //add json data
+        map.addSource('nyc',
+        {
+            type: 'geojson',
+            data:'data/nyc.geojson'
+
+        })
+
+    map.addLayer({
+        id:'nyc-fill-diff',
+        type: 'fill',
+        source: 'nyc',
+        paint:{
+            'fill-color': [
+                'match',
+                ['get','boro_code'],
+                1,
+                'green',
+                2,
+                'blue',
+                3,
+                'purple',
+                4,
+                'burlywood',
+                'steelblue'
+            ]
+        },
+        
+    },
+    "road-label"
+    )  
+    map.on('click',(e) =>{
+        console.log('click',e.point)
+        const [features] = map.queryRenderedFeatures(e.point, {
+        layers: ['nyc-fill-diff']
+});
+    if(features)
+    {
+        const {boro_name,pop2020}= features.properties
+        alert(boro_name+" "+pop2020)
+    }
+    }
+
+    )
+    });
+    document.querySelector('#flyToConey').addEventListener('click',() =>
+    {
+        console.log('click');
+        map.flyTo({
+            center:INITIAL_CENTER,
+            zoom:11
+        })
+    })
+    document.querySelector('#reset').addEventListener('click',() =>
+    {
+        console.log('reset')
+        map.flyTo({
+            center:[-73.938675,40.819872],
+            zoom:11
+        })
+    })
+   
+//     const marker1 = new mapboxgl.Marker()
+// .setLngLat([78.337270,17.491876])
+// .addTo(map);
+const locations= [
+    {
+        name:"Home",
+        color:'#00425A',
+        lnglat:[78.337270,17.491876]
+    },
+    {
+        name:"Office",
+        color:'#1F8A70',
+        lnglat:[78.344130,17.418669]
+    },
+    {
+        name:"Hostel",
+        color:'#BFDB38',
+        lnglat:[78.349888,17.418717]
+    }
+    
+]
+locations.forEach(({name, color ,lnglat}) =>{
+    const popup = new mapboxgl.Popup({offset: 25}).setText(name) ;
+        new mapboxgl.Marker({color})
+        .setLngLat(lnglat)
+        .setPopup(popup)
+        .addTo(map);
+})
+
+   
+    let userInteracting = true;
+    
+        map.on('style.load', () => {
+    map.addSource('mapbox-dem', {
+    'type': 'raster-dem',
+    'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+    'tileSize': 512,
+    'maxzoom': 14
+    });
+    // add the DEM source as a terrain layer with exaggerated height
+    map.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1 });
+    });
+
+   map.on('style.load', () => {
+// Insert the layer beneath any symbol layer.
+const layers = map.getStyle().layers;
+const labelLayerId = layers.find(
+(layer) => layer.type === 'symbol' && layer.layout['text-field']
+).id;
+ 
+// The 'building' layer in the Mapbox Streets
+// vector tileset contains building height data
+// from OpenStreetMap.
+map.addLayer(
+{
+'id': 'add-3d-buildings',
+'source': 'composite',
+'source-layer': 'building',
+'filter': ['==', 'extrude', 'true'],
+'type': 'fill-extrusion',
+'minzoom': 15,
+'paint': {
+'fill-extrusion-color': '#aaa',
+ 
+// Use an 'interpolate' expression to
+// add a smooth transition effect to
+// the buildings as the user zooms in.
+'fill-extrusion-height': [
+'interpolate',
+['linear'],
+['zoom'],
+15,
+0,
+15.05,
+['get', 'height']
+],
+'fill-extrusion-base': [
+'interpolate',
+['linear'],
+['zoom'],
+15,
+0,
+15.05,
+['get', 'min_height']
+],
+'fill-extrusion-opacity': 0.6
+}
+},
+labelLayerId
+);
+
+
+});
+
+//add 3D model
+const modelOrigin = INITIAL_CENTER;
+const modelAltitude = 20000;
+const modelRotate = [Math.PI / 2, 0, 0];
+ 
+const modelAsMercatorCoordinate = mapboxgl.MercatorCoordinate.fromLngLat(
+modelOrigin,
+modelAltitude
+);
+ 
+// transformation parameters to position, rotate and scale the 3D model onto the map
+const modelTransform = {
+translateX: modelAsMercatorCoordinate.x,
+translateY: modelAsMercatorCoordinate.y,
+translateZ: modelAsMercatorCoordinate.z,
+rotateX: modelRotate[0],
+rotateY: modelRotate[1],
+rotateZ: modelRotate[2],
+/* Since the 3D model is in real world meters, a scale transform needs to be
+* applied since the CustomLayerInterface expects units in MercatorCoordinates.
+*/
+scale: modelAsMercatorCoordinate.meterInMercatorCoordinateUnits()
+};
+ 
+const THREE = window.THREE;
+ 
+// configuration of the custom layer for a 3D model per the CustomLayerInterface
+const customLayer = {
+id: '3d-model',
+type: 'custom',
+renderingMode: '3d',
+onAdd: function (map, gl) {
+this.camera = new THREE.Camera();
+this.scene = new THREE.Scene();
+ 
+// create two three.js lights to illuminate the model
+const directionalLight = new THREE.DirectionalLight(0xffffff,1000);
+directionalLight.position.set(0, -70, 100).normalize();
+// this.scene.add(directionalLight);
+ 
+const directionalLight2 = new THREE.DirectionalLight(0xffffff);
+directionalLight2.position.set(0, 70, 100).normalize();
+this.scene.add(directionalLight2);
+ 
+// use the three.js GLTF loader to add the 3D model to the three.js scene
+const loader = new THREE.GLTFLoader();
+loader.load(
+'./assets/scene.gltf',
+(gltf) => {
+this.scene.add(gltf.scene);
+}
+);
+this.map = map;
+ 
+// use the Mapbox GL JS map canvas for three.js
+this.renderer = new THREE.WebGLRenderer({
+canvas: map.getCanvas(),
+context: gl,
+antialias: true
+});
+ 
+this.renderer.autoClear = false;
+},
+render: function (gl, matrix) {
+const rotationX = new THREE.Matrix4().makeRotationAxis(
+new THREE.Vector3(1, 0, 0),
+modelTransform.rotateX
+);
+const rotationY = new THREE.Matrix4().makeRotationAxis(
+new THREE.Vector3(0, 1, 0),
+modelTransform.rotateY
+);
+const rotationZ = new THREE.Matrix4().makeRotationAxis(
+new THREE.Vector3(0, 0, 1),
+modelTransform.rotateZ
+);
+ 
+const m = new THREE.Matrix4().fromArray(matrix);
+const l = new THREE.Matrix4()
+.makeTranslation(
+modelTransform.translateX,
+modelTransform.translateY,
+modelTransform.translateZ
+)
+.scale(
+new THREE.Vector3(
+modelTransform.scale,
+-modelTransform.scale,
+modelTransform.scale
+)
+)
+.multiply(rotationX)
+.multiply(rotationY)
+.multiply(rotationZ);
+ 
+this.camera.projectionMatrix = m.multiply(l);
+this.renderer.resetState();
+this.renderer.render(this.scene, this.camera);
+this.map.triggerRepaint();
+}
+};
+ 
+map.on('style.load', () => {
+map.addLayer(customLayer, 'country-label',);
+});
+const origin = INITIAL_CENTER;
+ 
+// Washington DC
+const destination =[78.344130,17.418669];
+ 
+// A simple line from origin to destination.
+const route = {
+'type': 'FeatureCollection',
+'features': [
+{
+'type': 'Feature',
+'geometry': {
+'type': 'LineString',
+'coordinates': [origin, destination]
+}
+}
+]
+};
+ 
+// A single point that animates along the route.
+// Coordinates are initially set to origin.
+const point = {
+'type': 'FeatureCollection',
+'features': [
+{
+'type': 'Feature',
+'properties': {},
+'geometry': {
+'type': 'Point',
+'coordinates': origin
+}
+}
+]
+};
+ 
+// Calculate the distance in kilometers between route start/end point.
+const lineDistance = turf.length(route.features[0]);
+ 
+const arc = [];
+ 
+// Number of steps to use in the arc and animation, more steps means
+// a smoother arc and animation, but too many steps will result in a
+// low frame rate
+const steps = 500;
+ 
+// Draw an arc between the `origin` & `destination` of the two points
+for (let i = 0; i < lineDistance; i += lineDistance / steps) {
+const segment = turf.along(route.features[0], i);
+arc.push(segment.geometry.coordinates);
+}
+ 
+// Update the route with calculated arc coordinates
+route.features[0].geometry.coordinates = arc;
+ 
+// Used to increment the value of the point measurement against the route.
+let counter = 0;
+ 
+map.on('load', () => {
+// Add a source and layer displaying a point which will be animated in a circle.
+map.addSource('route', {
+'type': 'geojson',
+'data': route
+});
+ 
+map.addSource('point', {
+'type': 'geojson',
+'data': point
+});
+ 
+map.addLayer({
+'id': 'route',
+'source': 'route',
+'type': 'line',
+'paint': {
+'line-width': 2,
+'line-color': '#007cbf'
+}
+});
+
+map.loadImage(
+'https://img.icons8.com/color/512/airport.png',
+(error, image) => {
+if (error) throw error;
+ 
+// Add the image to the map style.
+map.addImage('air', image);
+ 
+map.addLayer({
+'id': 'point',
+'source': 'point',
+'type': 'symbol',
+'layout': {
+// This icon is a part of the Mapbox Streets style.
+// To view all images available in a Mapbox style, open
+// the style in Mapbox Studio and click the "Images" tab.
+// To add a new image to the style at runtime see
+// https://docs.mapbox.com/mapbox-gl-js/example/add-image/
+'icon-image': 'air',
+'icon-size': 0.1,
+'icon-rotate': ['get', 'bearing'],
+'icon-rotation-alignment': 'map',
+'icon-allow-overlap': true,
+'icon-ignore-placement': true
+}
+});
+ 
+function animate() {
+const start =
+route.features[0].geometry.coordinates[
+counter >= steps ? counter - 1 : counter
+];
+const end =
+route.features[0].geometry.coordinates[
+counter >= steps ? counter : counter + 1
+];
+if (!start || !end) return;
+ 
+// Update point geometry to a new position based on counter denoting
+// the index to access the arc
+point.features[0].geometry.coordinates =
+route.features[0].geometry.coordinates[counter];
+ 
+// Calculate the bearing to ensure the icon is rotated to match the route arc
+// The bearing is calculated between the current point and the next point, except
+// at the end of the arc, which uses the previous point and the current point
+point.features[0].properties.bearing = turf.bearing(
+turf.point(start),
+turf.point(end)
+);
+ 
+// Update the source with this new data
+map.getSource('point').setData(point);
+ 
+// Request the next frame of animation as long as the end has not been reached
+if (counter < steps) {
+requestAnimationFrame(animate);
+}
+ 
+counter = counter + 1;
+}
+ 
+document.getElementById('replay').addEventListener('click', () => {
+// Set the coordinates of the original point back to origin
+point.features[0].geometry.coordinates = origin;
+ 
+// Update the source layer
+map.getSource('point').setData(point);
+ 
+// Reset the counter
+counter = 0;
+ 
+// Restart the animation
+animate(counter);
+});
+ 
+// Start the animation
+animate(counter);
+})});
+
+
+//polygon
+map.on('load', () => {
+// Add a data source containing GeoJSON data.
+map.addSource('maine', {
+'type': 'geojson',
+'data': {
+'type': 'Feature',
+'geometry': {
+'type': 'Polygon',
+// These coordinates outline Maine.
+'coordinates':  [
+          [
+            [
+              14.698465445039687,
+              23.36711751182851
+            ],
+            [
+              11.464967725609341,
+              7.0023671992182415
+            ],
+            [
+              21.03054174291961,
+              -5.245672396720707
+            ],
+            [
+              33.69865496785701,
+              8.116632586232214
+            ],
+            [
+              31.297351643290966,
+              30.308734565531097
+            ],
+            [
+              14.984773878519349,
+              31.335666399305936
+            ],
+            [
+              14.698465445039687,
+              23.36711751182851
+            ]
+          ]
+        ]
+}
+}
+});
+ 
+// Add a new layer to visualize the polygon.
+map.addLayer({
+'id': 'maine',
+'type': 'fill',
+'source': 'maine', // reference the data source
+'layout': {},
+'paint': {
+'fill-color': '#0080ff', // blue color fill
+'fill-opacity': 0.5
+}
+});
+// Add a black outline around the polygon.
+map.addLayer({
+'id': 'outline',
+'type': 'line',
+'source': 'maine',
+'layout': {},
+'paint': {
+'line-color': '#000',
+'line-width': 3
+}
+});
+});
+
+
+
+</script>
+
+</body>
+</html>
